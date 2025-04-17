@@ -3,13 +3,17 @@ from tesselation.command import Command
 
 
 class Sphere(Command):
-    def __init__(self, R, origin, N, filepath):
+    def __init__(self, R, origin, N, filepath = ""):
         super().__init__(filepath)
         self.R = R
         self.origin = np.array(origin)
         self.N = N
 
     def execute(self):
+        vertices, faces = self.tessellate()
+        self.save_stl(vertices, np.array(faces))
+
+    def tessellate(self):
         vertices = []
         faces = []
         for i in range(self.N + 1):
@@ -20,7 +24,6 @@ class Sphere(Command):
                 y = self.R * np.sin(phi) * np.sin(theta)
                 z = self.R * np.cos(phi)
                 vertices.append([x, y, z])
-
         vertices = np.array(vertices) + self.origin
         for i in range(self.N):
             for j in range(self.N):
@@ -31,4 +34,4 @@ class Sphere(Command):
                 faces.append([v0, v1, v2])
                 faces.append([v1, v3, v2])
 
-        self.save_stl(vertices, np.array(faces))
+        return vertices, np.array(faces)

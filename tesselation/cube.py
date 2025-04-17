@@ -9,6 +9,10 @@ class Cube(Command):
         self.origin = np.array(origin)
 
     def execute(self):
+        vertices, faces = self.tessellate()
+        self.save_stl(vertices, faces)
+
+    def tessellate(self):
         vertices = np.array([
             [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
             [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]
@@ -23,4 +27,5 @@ class Cube(Command):
             [1, 2, 6], [6, 5, 1]
         ])
 
-        self.save_stl(vertices, faces)
+        return vertices, faces
+

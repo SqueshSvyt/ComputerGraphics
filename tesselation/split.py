@@ -11,7 +11,7 @@ class Split(Command):
     def execute(self):
         input_mesh = mesh.Mesh.from_file(self.input_filepath)
         vertices = input_mesh.vectors.reshape(-1, 3)
-        faces = np.arange(len(vertices)).reshape(-1, 3)  # Спрощенно
+        faces = np.arange(len(vertices)).reshape(-1, 3)
 
         new_vertices = []
         new_faces = []

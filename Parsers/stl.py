@@ -1,3 +1,5 @@
+import struct
+
 import numpy as np
 
 
@@ -53,6 +55,37 @@ class STLParser:
         self.vertices = np.array(self.vertices)
         self.faces = np.array(self.faces)
         print(f"STL loaded from {filepath}: {len(self.faces)} facets")
+
+
+    def read_binary(self, file_path):
+        """Read a binary STL file."""
+        self.vertices = []
+        self.faces = []
+        vertex_map = {}
+        current_vertex_index = 0
+
+        with open(file_path, 'rb') as f:
+            # Skip 80-byte header
+            f.seek(80)
+            # Read number of triangles (uint32)
+            num_triangles = struct.unpack('<I', f.read(4))[0]
+
+            for _ in range(num_triangles):
+                # Skip normal vector (3 floats, 12 bytes)
+                f.read(12)
+                # Read 3 vertices (each vertex is 3 floats, 12 bytes)
+                vertex_indices = []
+                for _ in range(3):
+                    vertex_data = struct.unpack('<fff', f.read(12))  # x, y, z
+                    vertex = tuple(vertex_data)
+                    if vertex not in vertex_map:
+                        vertex_map[vertex] = current_vertex_index
+                        self.vertices.append(vertex)
+                        current_vertex_index += 1
+                    vertex_indices.append(vertex_map[vertex])
+                self.faces.append(vertex_indices)
+                # Skip attribute byte count (2 bytes)
+                f.read(2)
 
     def calculate_normal(self, vertices):
         v0, v1, v2 = vertices
