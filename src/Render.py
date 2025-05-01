@@ -50,8 +50,15 @@ class GLRenderSystem:
         self.render_mode = RenderMode.FILLED
         self.show_axes = True
 
+        self.selected_shape = 0
+        self.selected_vertex = 0
+
         glEnableClientState(GL_VERTEX_ARRAY)
         glVertexPointer(3, GL_FLOAT, 0, self.vertices)
+
+    def set_vertex_index(self, shape_index, vertex_index):
+        self.selected_shape = shape_index
+        self.selected_vertex = vertex_index
 
     def add_shape(self, shape, position=(0.0, 0.0, 0.0), rotation=(0.0, 0.0, 0.0)):
         vertices, faces = shape.tessellate()
@@ -81,6 +88,30 @@ class GLRenderSystem:
         glEnd()
 
         glLineWidth(1.0)
+        glPopMatrix()
+
+    def render_vertex_highlight(self):
+        """Render a highlight for the selected vertex."""
+        if self.selected_shape < 0 or self.selected_shape >= len(self.shapes):
+            return
+        shape = self.shapes[self.selected_shape]
+        if self.selected_vertex < 0 or self.selected_vertex >= len(shape.vertices):
+            return
+
+        glPushMatrix()
+        glTranslatef(*shape.position)
+        glRotatef(shape.rotation[0], 1, 0, 0)
+        glRotatef(shape.rotation[1], 0, 1, 0)
+        glRotatef(shape.rotation[2], 0, 0, 1)
+
+        glPointSize(10.0)
+        glBegin(GL_POINTS)
+        glColor3f(1.0, 1.0, 0.0)  # Yellow
+        vertex = shape.vertices[self.selected_vertex]
+        glVertex3f(vertex[0], vertex[1], vertex[2])
+        glEnd()
+        glPointSize(1.0)
+
         glPopMatrix()
 
     def create_shader_program(self):
@@ -121,6 +152,41 @@ class GLRenderSystem:
         vertex_shader = compileShader(vertex_shader, GL_VERTEX_SHADER)
         fragment_shader = compileShader(fragment_shader, GL_FRAGMENT_SHADER)
         return compileProgram(vertex_shader, fragment_shader)
+
+    def delete_vertex(self, shape_index, vertex_index):
+        """Delete a vertex from a shape and update its triangles."""
+        if shape_index < 0 or shape_index >= len(self.shapes):
+            raise ValueError("Invalid shape index")
+
+        shape = self.shapes[shape_index]
+        if vertex_index < 0 or vertex_index >= len(shape.vertices):
+            raise ValueError("Invalid vertex index")
+
+        # Delete the vertex
+        shape.vertices = np.delete(shape.vertices, vertex_index, axis=0)
+
+        # Remove triangles containing the vertex and adjust indices
+        mask = ~np.any(shape.indices == vertex_index, axis=1)
+        shape.indices = shape.indices[mask]
+        shape.indices = np.where(shape.indices > vertex_index, shape.indices - 1, shape.indices)
+
+        # Update OpenGL vertex buffer
+        glVertexPointer(3, GL_FLOAT, 0, shape.vertices)
+
+    def move_vertex(self, shape_index, vertex_index, new_position):
+        """Move a vertex of a shape to a new position."""
+        if shape_index < 0 or shape_index >= len(self.shapes):
+            raise ValueError("Invalid shape index")
+
+        shape = self.shapes[shape_index]
+        if vertex_index < 0 or vertex_index >= len(shape.vertices):
+            raise ValueError("Invalid vertex index")
+
+        # Update vertex position
+        shape.vertices[vertex_index] = np.array(new_position, dtype=np.float32)
+
+        # Update OpenGL vertex buffer
+        glVertexPointer(3, GL_FLOAT, 0, shape.vertices)
 
     def render(self):
         glClearColor(0.2, 0.3, 0.3, 0.5)
@@ -167,3 +233,5 @@ class GLRenderSystem:
 
         if self.show_axes:
             self.render_axes()
+
+        self.render_vertex_highlight()

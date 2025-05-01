@@ -27,7 +27,5 @@ cylinder = Cylinder(
 
 
 window = GLWindow()
-render_system = GLRenderSystem([sphere, cylinder, cube])
-cube.origin = (2, 2, 2)
-render_system.add_shape(cube)
+render_system = GLRenderSystem([cube])
 window.run(render_system)

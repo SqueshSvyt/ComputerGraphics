@@ -3,6 +3,7 @@ import glfw
 from OpenGL.GL import *
 
 from src.Mode_Controller import ModeController
+from src.Mode_Controller import ControlMode
 from src.Render import RenderMode
 
 
@@ -65,28 +66,38 @@ class GLWindow:
             if self.render_system:
                 self.mode_controller.select_previous_shape(len(self.render_system.shapes))
 
-            # Triangle selection (in TRIANGLE mode)
-            elif self.mode_controller.is_triangle_mode() and action == glfw.PRESS:
-                if self.render_system and self.mode_controller.selected_shape_index < len(self.render_system.meshes):
-                    mesh = self.render_system.meshes[self.mode_controller.selected_shape_index]
-                    _, faces = mesh.half_edge_mesh.get_vertices_faces()
-                    triangle_count = len(faces) if faces.size > 0 else 0
+        elif key == glfw.KEY_UP and action == glfw.PRESS:
+            if self.render_system and self.mode_controller.is_triangle_mode():
+                shape_index = self.mode_controller.selected_shape_index
+                if 0 <= shape_index < len(self.render_system.shapes):
+                    vertex_count = len(self.render_system.shapes[shape_index].vertices)
+                    vertex_index, shape_index = self.mode_controller.select_next_vertex(vertex_count)
+                    self.render_system.set_vertex_index(shape_index, vertex_index)
+                    print(f"Selected vertex: {self.mode_controller.selected_vertex_index}")
 
-                    if key == glfw.KEY_UP:
-                        self.mode_controller.select_next_triangle(triangle_count)
-                    elif key == glfw.KEY_DOWN:
-                        self.mode_controller.select_previous_triangle(triangle_count)
-                    elif key == glfw.KEY_D:
-                        mesh.delete_triangle(self.mode_controller.selected_triangle_index)
-                        print(
-                            f"Deleted triangle {self.mode_controller.selected_triangle_index} from shape {self.mode_controller.selected_shape_index}")
-                        # Update triangle count after deletion
-                        _, faces = mesh.half_edge_mesh.get_vertices_faces()
-                        triangle_count = len(faces) if faces.size > 0 else 0
-                        if self.mode_controller.selected_triangle_index >= triangle_count and triangle_count > 0:
-                            self.mode_controller.selected_triangle_index = triangle_count - 1
-                            print(
-                                f"Adjusted selected triangle index to: {self.mode_controller.selected_triangle_index}")
+        elif key == glfw.KEY_DOWN and action == glfw.PRESS:
+            if self.render_system and self.mode_controller.is_triangle_mode():
+                shape_index = self.mode_controller.selected_shape_index
+                if 0 <= shape_index < len(self.render_system.shapes):
+                    vertex_count = len(self.render_system.shapes[shape_index].vertices)
+                    vertex_index, shape_index = self.mode_controller.select_previous_vertex(vertex_count)
+                    self.render_system.set_vertex_index(shape_index, vertex_index)
+                    print(f"Selected vertex: {self.mode_controller.selected_vertex_index}")
+
+        elif key == glfw.KEY_D and action == glfw.PRESS:
+            if self.render_system and self.mode_controller.is_triangle_mode():
+                shape_index = self.mode_controller.selected_shape_index
+                vertex_index = self.mode_controller.selected_vertex_index
+                if 0 <= shape_index < len(self.render_system.shapes):
+                    try:
+                        self.render_system.delete_vertex(shape_index, vertex_index)
+                        print(f"Deleted vertex {vertex_index} from shape {shape_index}")
+                        # Reset vertex index if necessary
+                        vertex_count = len(self.render_system.shapes[shape_index].vertices)
+                        if self.mode_controller.selected_vertex_index >= vertex_count:
+                            self.mode_controller.selected_vertex_index = max(0, vertex_count - 1)
+                    except ValueError as e:
+                        print(f"Error deleting vertex: {e}")
 
     def mouse_button_callback(self, window, button, action, mods):
         if button == glfw.MOUSE_BUTTON_LEFT:
@@ -109,29 +120,21 @@ class GLWindow:
         cam = self.render_system.camera
 
         if self.mode_controller.is_triangle_mode():
-            index = self.mode_controller.selected_shape_index
-            if 0 <= index < len(self.render_system.meshes):
-                mesh = self.render_system.meshes[index]
-                _, faces = mesh.half_edge_mesh.get_vertices_faces()
-                if self.mode_controller.selected_triangle_index < len(faces):
+            shape_index = self.mode_controller.selected_shape_index
+            vertex_index = self.mode_controller.selected_vertex_index
+            if 0 <= shape_index < len(self.render_system.shapes):
+                shape = self.render_system.shapes[shape_index]
+                if vertex_index < len(shape.vertices):
+                    current_pos = shape.vertices[vertex_index].copy()
                     if self.left_mouse_pressed:
-                        # Move the triangle
-                        translation = [dx * self.move_sensitivity, -dy * self.move_sensitivity, 0.0]
-                        mesh.transform_triangle(self.mode_controller.selected_triangle_index, translation=translation)
-                        print(
-                            f"[Triangle] Moved triangle {self.mode_controller.selected_triangle_index} in shape {index}")
+                        current_pos[0] += dx * self.move_sensitivity
+                        current_pos[1] -= dy * self.move_sensitivity
+                        self.render_system.move_vertex(shape_index, vertex_index, current_pos)
+                        print(f"[Vertex] Moved vertex {vertex_index} of shape {shape_index} to {current_pos}")
                     elif self.right_mouse_pressed:
-                        # Move along Z-axis
-                        translation = [0.0, 0.0, -dy * self.move_sensitivity]
-                        mesh.transform_triangle(self.mode_controller.selected_triangle_index, translation=translation)
-                        print(
-                            f"[Triangle] Moved triangle {self.mode_controller.selected_triangle_index} along Z in shape {index}")
-                    elif self.middle_mouse_pressed:
-                        # Rotate the triangle around Z-axis
-                        rotation = [0.0, 0.0, dx * 0.5]  # Rotate based on mouse X movement
-                        mesh.transform_triangle(self.mode_controller.selected_triangle_index, rotation=rotation)
-                        print(
-                            f"[Triangle] Rotated triangle {self.mode_controller.selected_triangle_index} in shape {index}")
+                        current_pos[2] -= dy * self.move_sensitivity
+                        self.render_system.move_vertex(shape_index, vertex_index, current_pos)
+                        print(f"[Vertex] Moved vertex {vertex_index} of shape {shape_index} to {current_pos}")
 
         elif self.mode_controller.is_shape_mode():
             index = self.mode_controller.selected_shape_index
@@ -143,14 +146,14 @@ class GLWindow:
                     shape.position[1] -= dy * self.move_sensitivity
                     print(f"[Shape] Moved shape {index} to {shape.position}")
                 elif self.right_mouse_pressed:
-                    shape.position[2] -= dy * self.move_sensitivity  # рух по Y (вгору-вниз)
+                    shape.position[2] -= dy * self.move_sensitivity
                 elif self.middle_mouse_pressed:
-                    shape.rotation[1] += dx * 0.5  # обертання навколо Y (вліво-вправо)
-                    shape.rotation[0] += dy * 0.5  # обертання навколо X (вгору-вниз)
+                    shape.rotation[1] += dx * 0.5
+                    shape.rotation[0] += dy * 0.5
                     print(f"[Shape] Rotated shape {index} to {shape.rotation}")
 
 
-        # 🎥 CAMERA mode: move camera with left/right mouse
+            # 🎥 CAMERA mode: move camera with left/right mouse
         else:
             if self.left_mouse_pressed:
                 cam.pan(-dx * self.move_sensitivity, dy * self.move_sensitivity)
@@ -160,9 +163,6 @@ class GLWindow:
     def scroll_callback(self, window, xoffset, yoffset):
         if self.render_system:
             self.render_system.camera.zoom(-yoffset * 0.5)
-
-
-
 
     def run(self, render_system):
         self.render_system = render_system

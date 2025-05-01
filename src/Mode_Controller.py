@@ -11,7 +11,7 @@ class ModeController:
     def __init__(self):
         self.mode = ControlMode.CAMERA
         self.selected_shape_index = 0
-        self.selected_triangle_index = 0
+        self.selected_vertex_index = 0
 
     def toggle_mode(self):
         """Cycle through CAMERA, SHAPE, and TRIANGLE modes."""
@@ -48,6 +48,16 @@ class ModeController:
             return
         self.selected_triangle_index = (self.selected_triangle_index - 1) % triangle_count
         print(f"Selected triangle index: {self.selected_triangle_index}")
+
+    def select_next_vertex(self, vertex_count):
+        self.selected_vertex_index = (self.selected_vertex_index + 1) % max(1, vertex_count)
+
+        return self.selected_vertex_index, self.selected_shape_index
+
+    def select_previous_vertex(self, vertex_count):
+        self.selected_vertex_index = (self.selected_vertex_index - 1) % max(1, vertex_count)
+
+        return self.selected_vertex_index, self.selected_shape_index
 
     def is_camera_mode(self):
         return self.mode == ControlMode.CAMERA
