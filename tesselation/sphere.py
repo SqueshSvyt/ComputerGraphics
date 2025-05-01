@@ -1,8 +1,8 @@
 import numpy as np
-from tesselation.command import Command
+from tesselation.command import Shape
 
 
-class Sphere(Command):
+class Sphere(Shape):
     def __init__(self, R, origin, N, filepath = ""):
         super().__init__(filepath)
         self.R = R

@@ -2,6 +2,7 @@
 import glfw
 from OpenGL.GL import *
 
+from src.Mode_Controller import ModeController
 from src.Render import RenderMode
 
 
@@ -26,12 +27,15 @@ class GLWindow:
         glEnable(GL_DEPTH_TEST)
         self.running = True
         self.render_system = None
+        self.mode_controller = ModeController()
 
         self.last_x = 0
         self.last_y = 0
         self.left_mouse_pressed = False
         self.right_mouse_pressed = False
         self.middle_mouse_pressed = False
+
+        self.move_sensitivity = 0.05
 
     def key_callback(self, window, key, scancode, action, mods):
         if key == glfw.KEY_ESCAPE and action == glfw.PRESS:
@@ -50,6 +54,40 @@ class GLWindow:
                 self.render_system.set_render_mode(new_mode)
                 print(f"Switched to render mode: {new_mode}")
 
+        elif key == glfw.KEY_TAB and action == glfw.PRESS:
+            self.mode_controller.toggle_mode()
+
+        elif key == glfw.KEY_RIGHT and action == glfw.PRESS:
+            if self.render_system:
+                self.mode_controller.select_next_shape(len(self.render_system.shapes))
+
+        elif key == glfw.KEY_LEFT and action == glfw.PRESS:
+            if self.render_system:
+                self.mode_controller.select_previous_shape(len(self.render_system.shapes))
+
+            # Triangle selection (in TRIANGLE mode)
+            elif self.mode_controller.is_triangle_mode() and action == glfw.PRESS:
+                if self.render_system and self.mode_controller.selected_shape_index < len(self.render_system.meshes):
+                    mesh = self.render_system.meshes[self.mode_controller.selected_shape_index]
+                    _, faces = mesh.half_edge_mesh.get_vertices_faces()
+                    triangle_count = len(faces) if faces.size > 0 else 0
+
+                    if key == glfw.KEY_UP:
+                        self.mode_controller.select_next_triangle(triangle_count)
+                    elif key == glfw.KEY_DOWN:
+                        self.mode_controller.select_previous_triangle(triangle_count)
+                    elif key == glfw.KEY_D:
+                        mesh.delete_triangle(self.mode_controller.selected_triangle_index)
+                        print(
+                            f"Deleted triangle {self.mode_controller.selected_triangle_index} from shape {self.mode_controller.selected_shape_index}")
+                        # Update triangle count after deletion
+                        _, faces = mesh.half_edge_mesh.get_vertices_faces()
+                        triangle_count = len(faces) if faces.size > 0 else 0
+                        if self.mode_controller.selected_triangle_index >= triangle_count and triangle_count > 0:
+                            self.mode_controller.selected_triangle_index = triangle_count - 1
+                            print(
+                                f"Adjusted selected triangle index to: {self.mode_controller.selected_triangle_index}")
+
     def mouse_button_callback(self, window, button, action, mods):
         if button == glfw.MOUSE_BUTTON_LEFT:
             self.left_mouse_pressed = (action == glfw.PRESS)
@@ -67,26 +105,63 @@ class GLWindow:
         if self.render_system is None:
             return
 
-        # Middle mouse drag: Move the figure
-        if self.middle_mouse_pressed:
-            move_sensitivity = 0.01  # Adjust for faster/slower movement
-            position = self.render_system.position
-            position[0] += dx * move_sensitivity  # Mouse X -> World X
-            position[1] -= dy * move_sensitivity  # Mouse Y -> World Y (inverted for intuitive drag)
-            self.render_system.position = position
-            print(f"New position (mouse): {position}")  # For debugging
-
         # Camera controls (unchanged)
         cam = self.render_system.camera
-        sensitivity = 0.005
-        if self.left_mouse_pressed:
-            cam.pan(-dx * sensitivity, dy * sensitivity)
-        elif self.right_mouse_pressed:
-            cam.orbit(-dx * 0.5, -dy * 0.5)
+
+        if self.mode_controller.is_triangle_mode():
+            index = self.mode_controller.selected_shape_index
+            if 0 <= index < len(self.render_system.meshes):
+                mesh = self.render_system.meshes[index]
+                _, faces = mesh.half_edge_mesh.get_vertices_faces()
+                if self.mode_controller.selected_triangle_index < len(faces):
+                    if self.left_mouse_pressed:
+                        # Move the triangle
+                        translation = [dx * self.move_sensitivity, -dy * self.move_sensitivity, 0.0]
+                        mesh.transform_triangle(self.mode_controller.selected_triangle_index, translation=translation)
+                        print(
+                            f"[Triangle] Moved triangle {self.mode_controller.selected_triangle_index} in shape {index}")
+                    elif self.right_mouse_pressed:
+                        # Move along Z-axis
+                        translation = [0.0, 0.0, -dy * self.move_sensitivity]
+                        mesh.transform_triangle(self.mode_controller.selected_triangle_index, translation=translation)
+                        print(
+                            f"[Triangle] Moved triangle {self.mode_controller.selected_triangle_index} along Z in shape {index}")
+                    elif self.middle_mouse_pressed:
+                        # Rotate the triangle around Z-axis
+                        rotation = [0.0, 0.0, dx * 0.5]  # Rotate based on mouse X movement
+                        mesh.transform_triangle(self.mode_controller.selected_triangle_index, rotation=rotation)
+                        print(
+                            f"[Triangle] Rotated triangle {self.mode_controller.selected_triangle_index} in shape {index}")
+
+        elif self.mode_controller.is_shape_mode():
+            index = self.mode_controller.selected_shape_index
+            if 0 <= index < len(self.render_system.shapes):
+                shape = self.render_system.shapes[index]
+
+                if self.left_mouse_pressed:
+                    shape.position[0] += dx * self.move_sensitivity
+                    shape.position[1] -= dy * self.move_sensitivity
+                    print(f"[Shape] Moved shape {index} to {shape.position}")
+                elif self.right_mouse_pressed:
+                    shape.position[2] -= dy * self.move_sensitivity  # рух по Y (вгору-вниз)
+                elif self.middle_mouse_pressed:
+                    shape.rotation[1] += dx * 0.5  # обертання навколо Y (вліво-вправо)
+                    shape.rotation[0] += dy * 0.5  # обертання навколо X (вгору-вниз)
+                    print(f"[Shape] Rotated shape {index} to {shape.rotation}")
+
+
+        # 🎥 CAMERA mode: move camera with left/right mouse
+        else:
+            if self.left_mouse_pressed:
+                cam.pan(-dx * self.move_sensitivity, dy * self.move_sensitivity)
+            elif self.right_mouse_pressed:
+                cam.orbit(-dx * 0.5, -dy * 0.5)
 
     def scroll_callback(self, window, xoffset, yoffset):
         if self.render_system:
             self.render_system.camera.zoom(-yoffset * 0.5)
+
+
 
 
     def run(self, render_system):

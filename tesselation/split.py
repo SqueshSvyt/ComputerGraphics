@@ -1,9 +1,9 @@
 import numpy as np
 from stl import mesh
-from tesselation.command import Command
+from tesselation.command import Shape
 
 
-class Split(Command):
+class Split(Shape):
     def __init__(self, input_filepath, filepath):
         super().__init__(filepath)
         self.input_filepath = input_filepath

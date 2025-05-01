@@ -1,8 +1,8 @@
 import numpy as np
-from tesselation.command import Command
+from tesselation.command import Shape
 
 
-class Cube(Command):
+class Cube(Shape):
     def __init__(self, L, origin, filepath):
         super().__init__(filepath)
         self.L = L

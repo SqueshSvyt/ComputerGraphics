@@ -10,18 +10,38 @@ from src.Camera import Camera
 
 from Parsers.stl import STLParser
 
+from tesselation.pyramid import Pyramid
+
+
 class RenderMode(Enum):
     ALL = 0
     FILLED = 1
     WIREFRAME = 2
 
 
-class GLRenderSystem:
-    def __init__(self, shape):
-        vertices, faces = shape.tessellate()
-
+class Shape_Renderer:
+    def __init__(self, vertices, indices, position=(0.0, 0.0, 0.0), rotation=(0.0, 0.0, 0.0)):
         self.vertices = vertices.astype(np.float32)
-        self.triangle_indices = faces.flatten().astype(np.uint32)
+        self.indices = indices.flatten().astype(np.uint32)
+        self.position = list(position)
+        self.rotation = list(rotation)
+
+
+class GLRenderSystem:
+    def __init__(self, shapes=None):
+        self.shapes = []
+
+        if shapes is None:
+            pyramid = Pyramid(base_size=2.0, height=2.0, origin=[0, 0, 0], filepath="output/pyramid1.stl")
+            self.add_shape(pyramid, position=(0.0, 0.0, 0.0))
+        else:
+            for shape in shapes:
+                position = shape.origin
+                shape.origin = [0, 0, 0]
+                self.add_shape(shape, position=position)
+
+        self.vertices = None
+        self.triangle_indices = None
 
         self.position = [0.0, 0.0, 0.0]
         self.rotation = [0.0, 0.0, 0.0]
@@ -32,6 +52,11 @@ class GLRenderSystem:
 
         glEnableClientState(GL_VERTEX_ARRAY)
         glVertexPointer(3, GL_FLOAT, 0, self.vertices)
+
+    def add_shape(self, shape, position=(0.0, 0.0, 0.0), rotation=(0.0, 0.0, 0.0)):
+        vertices, faces = shape.tessellate()
+        shape = Shape_Renderer(vertices, faces, position, rotation)
+        self.shapes.append(shape)
 
     def set_render_mode(self, mode):
         """Встановлює режим рендерингу: для прикладу FILLED або WIREFRAME."""
@@ -46,29 +71,16 @@ class GLRenderSystem:
         print(f"Coordinate axes: {'visible' if self.show_axes else 'hidden'}")
 
     def render_axes(self):
-        """Render coordinate axes (X: red, Y: green, Z: blue)."""
         glPushMatrix()
-        glTranslatef(*self.position)  # Follow the figure's position
-        glLineWidth(2.0)  # Thicker lines for visibility
+        glLineWidth(2.0)
 
         glBegin(GL_LINES)
-        # X-axis (red)
-        glColor3f(1.0, 0.0, 0.0)
-        glVertex3f(0.0, 0.0, 0.0)
-        glVertex3f(1.0, 0.0, 0.0)
-
-        # Y-axis (green)
-        glColor3f(0.0, 1.0, 0.0)
-        glVertex3f(0.0, 0.0, 0.0)
-        glVertex3f(0.0, 1.0, 0.0)
-
-        # Z-axis (blue)
-        glColor3f(0.0, 0.0, 1.0)
-        glVertex3f(0.0, 0.0, 0.0)
-        glVertex3f(0.0, 0.0, 1.0)
+        glColor3f(1.0, 0.0, 0.0); glVertex3f(0.0, 0.0, 0.0); glVertex3f(1.0, 0.0, 0.0)  # X - Red
+        glColor3f(0.0, 1.0, 0.0); glVertex3f(0.0, 0.0, 0.0); glVertex3f(0.0, 1.0, 0.0)  # Y - Green
+        glColor3f(0.0, 0.0, 1.0); glVertex3f(0.0, 0.0, 0.0); glVertex3f(0.0, 0.0, 1.0)  # Z - Blue
         glEnd()
 
-        glLineWidth(1.0)  # Reset line width
+        glLineWidth(1.0)
         glPopMatrix()
 
     def create_shader_program(self):
@@ -111,8 +123,8 @@ class GLRenderSystem:
         return compileProgram(vertex_shader, fragment_shader)
 
     def render(self):
-        glClearColor(0.2, 0.3, 0.3, 1.0)
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)  # Очищення буфера глибини
+        glClearColor(0.2, 0.3, 0.3, 0.5)
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
@@ -122,37 +134,36 @@ class GLRenderSystem:
         view_matrix = np.array(self.camera.calc_view_matrix().to_list(), dtype=np.float32)
         glLoadMatrixf(view_matrix)
 
-        glPushMatrix()
+        for shape in self.shapes:
+            glPushMatrix()
+            glTranslatef(*shape.position)
+            glRotatef(shape.rotation[0], 1, 0, 0)
+            glRotatef(shape.rotation[1], 0, 1, 0)
+            glRotatef(shape.rotation[2], 0, 0, 1)
 
-        glTranslatef(*self.position)
-        glRotatef(self.rotation[0], 1, 0, 0)
-        glRotatef(self.rotation[1], 0, 1, 0)
-        glRotatef(self.rotation[2], 0, 0, 1)
+            glEnableClientState(GL_VERTEX_ARRAY)
+            glVertexPointer(3, GL_FLOAT, 0, shape.vertices)
 
-        glColor3f(0.5, 0.5, 0.5)
+            if self.render_mode == RenderMode.FILLED:
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
+                glColor3f(0.5, 0.5, 0.5)
+                glDrawElements(GL_TRIANGLES, len(shape.indices), GL_UNSIGNED_INT, shape.indices)
+            elif self.render_mode == RenderMode.WIREFRAME:
+                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+                glColor3f(0.5, 0.0, 0.0)
+                glDrawElements(GL_TRIANGLES, len(shape.indices), GL_UNSIGNED_INT, shape.indices)
+            elif self.render_mode == RenderMode.ALL:
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
+                glColor3f(0.5, 0.5, 0.5)
+                glDrawElements(GL_TRIANGLES, len(shape.indices), GL_UNSIGNED_INT, shape.indices)
 
-        if self.render_mode == RenderMode.FILLED:
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)  # Заливка трикутників
-        elif self.render_mode == RenderMode.WIREFRAME:
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)  # Лише контури
-        elif self.render_mode == RenderMode.ALL:
-            # First, draw filled triangles
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
-            glColor3f(0.5, 0.5, 0.5)  # Gray for filled
-            glDrawElements(GL_TRIANGLES, len(self.triangle_indices), GL_UNSIGNED_INT, self.triangle_indices)
+                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+                glColor3f(0.5, 0.0, 0.0)
+                glEnable(GL_POLYGON_OFFSET_LINE)
+                glDrawElements(GL_TRIANGLES, len(shape.indices), GL_UNSIGNED_INT, shape.indices)
+                glDisable(GL_POLYGON_OFFSET_LINE)
 
-            # Then, draw wireframe overlay
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
-            glColor3f(0.5, 0.0, 0.0)  # Yellow for wireframe
-            glEnable(GL_POLYGON_OFFSET_LINE)  # Avoid z-fighting
-            glPolygonOffset(-1.0, -1.0)  # Push lines slightly forward
-            glDrawElements(GL_TRIANGLES, len(self.triangle_indices), GL_UNSIGNED_INT, self.triangle_indices)
-            glDisable(GL_POLYGON_OFFSET_LINE)
-
-
-        glDrawElements(GL_TRIANGLES, len(self.triangle_indices), GL_UNSIGNED_INT, self.triangle_indices)
-
-        glPopMatrix()
+            glPopMatrix()
 
         if self.show_axes:
             self.render_axes()
